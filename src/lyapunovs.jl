@@ -142,12 +142,9 @@ function local_lyapunovs(integ, N, dt::Real, Ttr::Real = 0.0)
         end
     end
     k = size(get_deviations(integ))[2]
-    # λ::Vector{T} = zeros(T, k)
     λ = [zeros(T,k) for i = 1:N]
     u = [similar(integ.u) for i = 1:N]
     t0 = integ.t
-    @show integ.u
-    @show typeof(integ.u)
     u[1] = integ.u
 
     for i in 2:N
@@ -160,6 +157,8 @@ function local_lyapunovs(integ, N, dt::Real, Ttr::Real = 0.0)
     map(x -> x ./= (integ.t - t0), λ)
     return λ, u
 end
+get_us(u) = getindex.(u, :, 1)
+get_Js(u) = [u[i][:,2:4] for i = 1:length(u)] 
 
 _get_Q(qrdec::StaticArrays.QR) = qrdec.Q
 _get_Q(qrdec::LinearAlgebra.QRCompactWY) = Matrix(qrdec.Q)
