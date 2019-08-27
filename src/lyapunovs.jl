@@ -68,6 +68,9 @@ Taylor & Francis (1992)
 lyapunovs(ds::DS, N, k::Int = dimension(ds); kwargs...) =
 lyapunovs(ds, N, orthonormal(dimension(ds), k); kwargs...)
 
+local_lyapunovs(ds::DS, N, k::Int = dimension(ds); kwargs...) =
+    local_lyapunovs(ds, N, orthonormal(dimension(ds), k); kwargs...)
+
 function lyapunovs(ds::DS{IIP, S, D}, N, Q0::AbstractMatrix; Ttr::Real = 0,
     dt::Real = 1, u0 = get_state(ds), diffeq...) where {IIP, S, D}
 
@@ -81,6 +84,22 @@ function lyapunovs(ds::DS{IIP, S, D}, N, Q0::AbstractMatrix; Ttr::Real = 0,
     end
 
     λ::Vector{T} = lyapunovs(integ, N, dt, Ttr)
+    return λ
+end
+
+function local_lyapunovs(ds::DS{IIP, S, D}, N, Q0::AbstractMatrix; Ttr::Real = 0,
+    dt::Real = 1, u0 = get_state(ds), diffeq...) where {IIP, S, D}
+
+    T = stateeltype(ds)
+    # Create tangent integrator:
+    if typeof(ds) <: DDS
+        @assert typeof(Ttr) == Int
+        integ = tangent_integrator(ds, Q0; u0 = u0)
+    else
+        integ = tangent_integrator(ds, Q0; u0 = u0, diffeq...)
+    end
+
+    λ = local_lyapunovs(integ, N, dt, Ttr)
     return λ
 end
 
@@ -109,6 +128,37 @@ function lyapunovs(integ, N, dt::Real, Ttr::Real = 0.0)
     end
     λ ./= (integ.t - t0)
     return λ
+end
+
+function local_lyapunovs(integ, N, dt::Real, Ttr::Real = 0.0)
+
+    T = stateeltype(integ)
+    t0 = integ.t
+    if Ttr > 0
+        while integ.t < t0 + Ttr
+            step!(integ, dt)
+            qrdec = LinearAlgebra.qr(get_deviations(integ))
+            set_deviations!(integ, _get_Q(qrdec))
+        end
+    end
+    k = size(get_deviations(integ))[2]
+    # λ::Vector{T} = zeros(T, k)
+    λ = [zeros(T,k) for i = 1:N]
+    u = [similar(integ.u) for i = 1:N]
+    t0 = integ.t
+    @show integ.u
+    @show typeof(integ.u)
+    u[1] = integ.u
+
+    for i in 2:N
+        step!(integ, dt)
+        u[i] = integ.u
+        qrdec = LinearAlgebra.qr(get_deviations(integ))
+        λ[i] = log.(abs.(diag(qrdec.R)))
+        set_deviations!(integ, _get_Q(qrdec))
+    end
+    map(x -> x ./= (integ.t - t0), λ)
+    return λ, u
 end
 
 _get_Q(qrdec::StaticArrays.QR) = qrdec.Q
